@@ -1,0 +1,631 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Commute map: Boeing Access Rd office</title>
+<link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&display=swap" rel="stylesheet">
+<link href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css" rel="stylesheet">
+<style>
+:root{
+  box-sizing:border-box;
+  padding-top:env(safe-area-inset-top,0px);
+  padding-bottom:env(safe-area-inset-bottom,0px);
+  --land:#f1f3f4; --water:#a3ccff; --water-label:#3a6db3; --park:#c8ebc4; --airport:#e2e5ea; --runway:#c9ced6;
+  --hwy:#fdd57a; --hwy-edge:#e3ac3a; --road:#ffffff; --road-edge:#d5d8dc; --label:#5f6368;
+  --route:#1a73e8; --route-edge:#1552a8; --route-casing:#ffffff; --route-dim:#8ab4f8;
+  --surface:#ffffff; --surface-2:#f1f3f4; --text:#202124; --muted:#5f6368; --line:#e0e2e5;
+  --pin:#ea4335; --accent:#1a73e8; --accent-weak:#e8f0fe; --shadow:0 1px 3px rgba(60,64,67,.3),0 4px 8px 3px rgba(60,64,67,.15);
+  --link:#1e8a3c; --sounder:#7b57b5; --streetcar:#e8710a; --rapid:#c8102e; --bus:#80868b;
+  --peek:132px;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --land:#242f3e; --water:#17263c; --water-label:#6f8fb8; --park:#263c3f; --airport:#2c3646; --runway:#3a4455;
+    --hwy:#746855; --hwy-edge:#1f2835; --road:#38414e; --road-edge:#212a37; --label:#9aa0a6;
+    --route:#669df6; --route-edge:#1a3d7a; --route-casing:#242f3e; --route-dim:#3d5f99;
+    --surface:#202124; --surface-2:#303134; --text:#e8eaed; --muted:#9aa0a6; --line:#3c4043;
+    --accent:#8ab4f8; --accent-weak:#1f2f4a; --shadow:0 1px 3px rgba(0,0,0,.5),0 4px 8px 3px rgba(0,0,0,.35);
+  }
+}
+:root[data-theme="dark"]{
+  --land:#242f3e; --water:#17263c; --water-label:#6f8fb8; --park:#263c3f; --airport:#2c3646; --runway:#3a4455;
+  --hwy:#746855; --hwy-edge:#1f2835; --road:#38414e; --road-edge:#212a37; --label:#9aa0a6;
+  --route:#669df6; --route-edge:#1a3d7a; --route-casing:#242f3e; --route-dim:#3d5f99;
+  --surface:#202124; --surface-2:#303134; --text:#e8eaed; --muted:#9aa0a6; --line:#3c4043;
+  --accent:#8ab4f8; --accent-weak:#1f2f4a; --shadow:0 1px 3px rgba(0,0,0,.5),0 4px 8px 3px rgba(0,0,0,.35);
+}
+html,body{height:100%;margin:0}
+[hidden]{display:none!important}
+body{position:relative;background:var(--land);color:var(--text);font:14px/1.4 Roboto,system-ui,-apple-system,"Segoe UI",Arial,sans-serif;-webkit-font-smoothing:antialiased;overflow:hidden}
+button,input{font:inherit;color:inherit}
+button{cursor:pointer}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+#map{position:absolute;inset:0;background:var(--land)}
+.leaflet-container{background:var(--land);font-family:inherit}
+
+/* ---------- endpoint + office markers ---------- */
+.ep-icon,.pin-icon{background:none;border:0}
+.ep{position:absolute;left:0;top:0}
+.ep .dot{position:absolute;width:12px;height:12px;left:-6px;top:-6px;border-radius:50%;background:#fff;border:3px solid var(--route);box-sizing:border-box;box-shadow:0 1px 2px rgba(0,0,0,.35)}
+.ep.custom .dot{border-style:dashed}
+.ep .pill{position:absolute;display:flex;align-items:center;gap:6px;white-space:nowrap;background:var(--surface);color:var(--text);
+  padding:4px 9px 4px 8px;border-radius:14px;box-shadow:var(--shadow);font-size:12px;line-height:1.2;cursor:pointer}
+.ep .pill b{font-weight:500}
+.ep .pill .t{display:flex;align-items:center;gap:3px;color:var(--route);font-weight:700}
+.peak .ep .pill .t{color:#d56e0c}
+.ep .pill svg{width:13px;height:13px;fill:currentColor}
+.ep.r .pill{left:12px;top:-12px}
+.ep.l .pill{right:12px;top:-12px}
+.ep.t .pill{left:0;bottom:12px;transform:translateX(-50%)}
+.ep.b .pill{left:0;top:12px;transform:translateX(-50%)}
+.ep.sel .pill{background:var(--route);color:#fff}
+.ep.sel .pill .t{color:#fff}
+.ep.sel .dot{transform:scale(1.25)}
+.pin{position:absolute;left:-15px;top:-40px;width:30px;height:40px;filter:drop-shadow(0 2px 2px rgba(0,0,0,.35))}
+.pin-lbl{position:absolute;left:16px;top:-36px;white-space:nowrap;font-size:12px;font-weight:700;color:var(--pin);
+  text-shadow:0 0 2px var(--land),0 0 2px var(--land),0 0 3px var(--land),0 0 3px var(--land)}
+
+/* ---------- top bar ---------- */
+.topbar{position:fixed;top:0;left:0;right:0;z-index:1100;padding:calc(env(safe-area-inset-top,0px) + 10px) 12px 0;display:flex;gap:8px;pointer-events:none}
+.topbar > *{pointer-events:auto}
+.search{flex:1;min-width:0;display:flex;align-items:center;gap:10px;height:48px;padding:0 14px;background:var(--surface);border:0;border-radius:24px;box-shadow:var(--shadow);text-align:left}
+.search svg{flex:none;width:20px;height:20px}
+.search .s-text{min-width:0;display:flex;flex-direction:column}
+.search .s-title{font-size:15px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.search .s-sub{font-size:12px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.round{flex:none;width:48px;height:48px;border-radius:50%;border:0;background:var(--surface);box-shadow:var(--shadow);display:grid;place-items:center}
+.round svg{width:22px;height:22px;fill:var(--muted)}
+.round[aria-expanded="true"] svg{fill:var(--accent)}
+
+.layers{position:fixed;z-index:1150;top:calc(env(safe-area-inset-top,0px) + 66px);right:12px;width:min(300px,calc(100vw - 24px));background:var(--surface);
+  border-radius:12px;box-shadow:var(--shadow);padding:6px 0 8px;display:none}
+.layers.open{display:block}
+.layers h2{font-size:14px;font-weight:500;margin:8px 16px 4px}
+.toggle{display:flex;align-items:center;gap:12px;padding:9px 16px;cursor:pointer}
+.toggle input{position:absolute;opacity:0;pointer-events:none}
+.toggle .sw{flex:none;width:34px;height:14px;border-radius:7px;background:var(--line);position:relative;transition:background .15s}
+.toggle .sw::after{content:"";position:absolute;left:-3px;top:-3px;width:20px;height:20px;border-radius:50%;background:#fafafa;box-shadow:0 1px 3px rgba(0,0,0,.4);transition:transform .15s}
+.toggle input:checked + .sw{background:color-mix(in srgb,var(--accent) 45%,transparent)}
+.toggle input:checked + .sw::after{transform:translateX(20px);background:var(--accent)}
+.toggle input:focus-visible + .sw{outline:2px solid var(--accent);outline-offset:3px}
+.toggle .sw-lbl{flex:1;display:flex;flex-direction:column}
+.toggle .sw-lbl small{color:var(--muted);font-size:12px}
+.swatch{flex:none;width:22px;height:4px;border-radius:2px}
+
+/* ---------- map controls ---------- */
+.ctrls{position:fixed;z-index:1050;right:12px;bottom:calc(var(--peek) + 14px + env(safe-area-inset-bottom,0px));display:flex;flex-direction:column;gap:10px;transition:bottom .25s}
+.zoom{display:flex;flex-direction:column;background:var(--surface);border-radius:8px;box-shadow:var(--shadow);overflow:hidden}
+.zoom button{width:40px;height:40px;border:0;background:none;display:grid;place-items:center}
+.zoom button + button{border-top:1px solid var(--line)}
+.zoom svg,.fit svg{width:20px;height:20px;fill:var(--muted)}
+.fit{width:40px;height:40px;border-radius:8px;border:0;background:var(--surface);box-shadow:var(--shadow);display:grid;place-items:center}
+
+/* ---------- bottom sheet ---------- */
+.sheet{position:fixed;z-index:1080;left:0;right:0;bottom:0;max-height:52%;display:flex;flex-direction:column;background:var(--surface);
+  border-radius:16px 16px 0 0;box-shadow:0 -1px 3px rgba(60,64,67,.2),0 -4px 12px rgba(60,64,67,.12);
+  padding-bottom:env(safe-area-inset-bottom,0px);transform:translateY(calc(100% - var(--peek) - env(safe-area-inset-bottom,0px)));transition:transform .28s cubic-bezier(.2,.8,.2,1)}
+.sheet[data-state="open"]{transform:none}
+.grab{flex:none;border:0;background:none;padding:8px 0 2px;display:flex;justify-content:center;touch-action:none}
+.grab::before{content:"";width:32px;height:4px;border-radius:2px;background:var(--line)}
+.sheet-head{flex:none;padding:4px 16px 12px}
+.sheet-head h1{font-size:18px;font-weight:500;margin:0 0 2px;letter-spacing:0}
+.sheet-head p{margin:0 0 10px;color:var(--muted);font-size:13px}
+.seg{display:flex;background:var(--surface-2);border-radius:18px;padding:3px}
+.seg button{flex:1;border:0;background:none;height:32px;border-radius:15px;font-weight:500;font-size:13px;color:var(--muted);display:flex;align-items:center;justify-content:center;gap:6px}
+.seg button[aria-pressed="true"]{background:var(--surface);color:var(--text);box-shadow:0 1px 2px rgba(0,0,0,.2)}
+.seg svg{width:15px;height:15px;fill:currentColor}
+.sheet-body{flex:1;overflow:auto;overscroll-behavior:contain;border-top:1px solid var(--line)}
+.list{list-style:none;margin:0;padding:0}
+.row{border-bottom:1px solid var(--line)}
+.row-top{display:flex;align-items:center}
+.row-main{flex:1;min-width:0;display:flex;align-items:center;gap:12px;padding:12px 4px 12px 16px;border:0;background:none;text-align:left}
+.row-icon{flex:none;width:32px;height:32px;border-radius:50%;background:var(--accent-weak);display:grid;place-items:center}
+.row-icon svg{width:17px;height:17px;fill:var(--accent)}
+.row.hidden .row-icon{background:var(--surface-2)}
+.row.hidden .row-icon svg{fill:var(--muted)}
+.row-text{flex:1;min-width:0;display:flex;flex-direction:column}
+.row-name{font-weight:500;font-size:15px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.row-sub{color:var(--muted);font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.row-time{flex:none;text-align:right;display:flex;flex-direction:column;align-items:flex-end}
+.row-time b{font-size:15px;font-weight:500;color:var(--route)}
+.peak .row-time b{color:#d56e0c}
+.row-time small{font-size:11px;color:var(--muted)}
+.row.hidden .row-name,.row.hidden .row-time b{color:var(--muted)}
+.icon-btn{flex:none;width:40px;height:40px;border:0;background:none;border-radius:50%;display:grid;place-items:center}
+.icon-btn svg{width:20px;height:20px;fill:var(--muted)}
+.icon-btn:hover{background:var(--surface-2)}
+.icon-btn:last-child{margin-right:6px}
+.row-detail{display:none;padding:0 16px 14px 60px;font-size:13px;color:var(--muted)}
+.row.sel{background:var(--accent-weak)}
+.row.sel .row-detail{display:block}
+.row-detail dl{display:grid;grid-template-columns:auto 1fr;gap:3px 14px;margin:0 0 8px}
+.row-detail dt{color:var(--muted)}
+.row-detail dd{margin:0;color:var(--text)}
+.row-detail .transit{display:flex;gap:8px;align-items:flex-start;color:var(--text)}
+.row-detail .transit svg{flex:none;width:16px;height:16px;fill:var(--link);margin-top:1px}
+.row-detail .est{font-style:italic}
+.actions{display:flex;flex-wrap:wrap;gap:8px;padding:14px 16px}
+.btn{height:36px;padding:0 16px;border-radius:18px;border:1px solid var(--line);background:var(--surface);color:var(--accent);font-weight:500;font-size:14px;display:inline-flex;align-items:center;gap:6px}
+.btn svg{width:18px;height:18px;fill:currentColor}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:var(--surface)}
+.note{padding:0 16px 18px;margin:0;font-size:12px;color:var(--muted)}
+.empty{padding:20px 16px;color:var(--muted);font-size:14px}
+
+/* add form */
+.addform{display:none;padding:14px 16px 6px}
+.adding .addform{display:block}
+.adding .list,.adding .actions.main{display:none}
+.field{display:flex;flex-direction:column;gap:4px;margin-bottom:12px}
+.field label{font-size:12px;color:var(--muted)}
+.field input{height:40px;padding:0 12px;border:1px solid var(--line);border-radius:8px;background:var(--surface);font-size:15px}
+.field input:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 1px var(--accent)}
+.fields{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px}
+.addform p{margin:0 0 10px;font-size:12px;color:var(--muted)}
+.addform .actions{padding:4px 0 10px}
+
+/* banner + toast */
+.banner{position:fixed;z-index:1120;left:50%;top:calc(env(safe-area-inset-top,0px) + 70px);transform:translateX(-50%);display:none;align-items:center;gap:12px;
+  background:#202124;color:#fff;padding:8px 8px 8px 16px;border-radius:22px;box-shadow:var(--shadow);font-size:14px;white-space:nowrap}
+.banner.show{display:flex}
+.banner button{border:0;background:none;color:#8ab4f8;font-weight:500;height:30px;padding:0 10px;border-radius:15px}
+.toast{position:fixed;z-index:1200;left:12px;right:12px;bottom:calc(var(--peek) + 14px + env(safe-area-inset-bottom,0px));margin:0 auto;max-width:420px;display:none;align-items:center;justify-content:space-between;gap:12px;
+  background:#323232;color:#fff;padding:6px 8px 6px 16px;border-radius:6px;box-shadow:var(--shadow);font-size:14px}
+.toast.show{display:flex}
+.toast button{border:0;background:none;color:#8ab4f8;font-weight:500;height:36px;padding:0 10px}
+.adding-map .leaflet-container{cursor:crosshair}
+
+@media (min-width:880px){
+  :root{--peek:0px}
+  .topbar{right:auto;width:380px}
+  .sheet{left:12px;right:auto;top:calc(env(safe-area-inset-top,0px) + 70px);bottom:calc(env(safe-area-inset-bottom,0px) + 12px);width:380px;max-height:none;border-radius:12px;box-shadow:var(--shadow);transform:none!important;padding-bottom:0}
+  .grab{display:none}
+  .sheet-head{padding-top:14px}
+  .ctrls{bottom:calc(env(safe-area-inset-bottom,0px) + 24px)}
+  .layers{left:404px;right:auto;top:calc(env(safe-area-inset-top,0px) + 10px)}
+  .toast{left:404px;right:auto;bottom:calc(env(safe-area-inset-bottom,0px) + 24px)}
+  .banner{left:calc(50% + 196px);top:calc(env(safe-area-inset-top,0px) + 16px)}
+}
+@media (prefers-reduced-motion: reduce){ .sheet,.ctrls{transition:none} }
+
+[hidden]{display:none!important}
+.maplibregl-map{font-family:inherit}
+.maplibregl-ctrl-bottom-left{bottom:calc(var(--peek) + env(safe-area-inset-bottom,0px));transition:bottom .25s}
+.maplibregl-ctrl-attrib{font-size:10px}
+.mk{width:0;height:0}
+.lbl{pointer-events:none}
+.stn-lbl span{position:absolute;left:8px;top:0;transform:translateY(-50%);white-space:nowrap;font-size:11px;color:#202124;
+  text-shadow:0 0 2px #fff,0 0 2px #fff,0 0 3px #fff}
+.dark-map .stn-lbl span{color:#e8eaed;text-shadow:0 0 2px #000,0 0 3px #000}
+.zA .stn-lbl,.zB .stn-lbl{display:none}
+.pin-lbl{text-shadow:0 0 2px #fff,0 0 2px #fff,0 0 3px #fff,0 0 3px #fff}
+.dark-map .pin-lbl{text-shadow:0 0 2px #000,0 0 3px #000}
+.layers .styleseg{margin:4px 16px 8px}
+.results{list-style:none;margin:-4px 0 8px;padding:0;border-radius:8px;overflow:hidden}
+.results li button{width:100%;text-align:left;border:0;background:var(--surface-2);padding:10px 12px;display:flex;flex-direction:column;border-bottom:1px solid var(--line)}
+.results li button small{color:var(--muted);font-size:12px}
+.results .msg{padding:8px 2px;font-size:12px;color:var(--muted)}
+#fHint{margin:0 0 12px}
+.btn:disabled{opacity:.45;cursor:default}
+.row-detail .src{margin-top:6px;font-size:12px}
+@media (min-width:880px){.maplibregl-ctrl-bottom-left{left:392px;bottom:0}}
+
+.row-detail .vibe{margin:0 0 10px;color:var(--text);font-size:14px;line-height:1.45}
+</style>
+</head>
+<body>
+<div id="map" role="application" aria-label="Map of drive routes from the office"></div>
+
+<div class="topbar">
+  <button class="search" id="officeBtn" aria-label="Show all routes from the office">
+    <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="#ea4335" d="M12 2a7 7 0 0 0-7 7c0 5.2 7 13 7 13s7-7.8 7-13a7 7 0 0 0-7-7zm0 9.5A2.5 2.5 0 1 1 12 6.5a2.5 2.5 0 0 1 0 5z"/></svg>
+    <span class="s-text"><span class="s-title">Boeing Access Rd office</span><span class="s-sub">2-22 S Boeing Access Rd, Tukwila, WA 98108</span></span>
+  </button>
+  <button class="round" id="layersBtn" aria-label="Map layers" aria-expanded="false" aria-controls="layers">
+    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M11.99 18.54 4.62 12.81 3 14.07l9 7 9-7-1.63-1.27-7.38 5.74zM12 16l7.36-5.73L21 9l-9-7-9 7 1.63 1.27L12 16z"/></svg>
+  </button>
+</div>
+
+<div class="layers" id="layers" role="dialog" aria-label="Map layers">
+  <h2>Map type</h2>
+  <div class="seg styleseg" role="group" aria-label="Map type">
+    <button data-style="streets">Default</button><button data-style="light">Light</button><button data-style="dark">Dark</button>
+  </div>
+  <h2>Transit</h2>
+  <label class="toggle"><input type="checkbox" data-layer="link"><span class="sw"></span><span class="sw-lbl">Link 1 Line<small>Light rail, every 8–10 min</small></span><span class="swatch" style="background:var(--link)"></span></label>
+  <label class="toggle"><input type="checkbox" data-layer="sounder"><span class="sw"></span><span class="sw-lbl">Sounder S Line<small>Commuter rail, weekday peaks</small></span><span class="swatch" style="background:repeating-linear-gradient(90deg,var(--sounder) 0 6px,transparent 6px 9px)"></span></label>
+  <label class="toggle"><input type="checkbox" data-layer="streetcar"><span class="sw"></span><span class="sw-lbl">Streetcars<small>South Lake Union and First Hill</small></span><span class="swatch" style="background:var(--streetcar)"></span></label>
+  <label class="toggle"><input type="checkbox" data-layer="bus"><span class="sw"></span><span class="sw-lbl">Key buses<small>RapidRide C and D, route 124</small></span><span class="swatch" style="background:var(--rapid)"></span></label>
+</div>
+
+<div class="banner" id="banner" role="status"><span>Tap the map where you'd live</span><button id="bannerCancel">Cancel</button></div>
+
+<div class="ctrls">
+  <div class="zoom">
+    <button id="zin" aria-label="Zoom in"><svg viewBox="0 0 24 24"><path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6z"/></svg></button>
+    <button id="zout" aria-label="Zoom out"><svg viewBox="0 0 24 24"><path d="M19 13H5v-2h14z"/></svg></button>
+  </div>
+  <button class="fit" id="fitBtn" aria-label="Show all routes"><svg viewBox="0 0 24 24"><path d="M12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8zm8.94 3A8.99 8.99 0 0 0 13 3.06V1h-2v2.06A8.99 8.99 0 0 0 3.06 11H1v2h2.06A8.99 8.99 0 0 0 11 20.94V23h2v-2.06A8.99 8.99 0 0 0 20.94 13H23v-2h-2.06zM12 19a7 7 0 1 1 0-14 7 7 0 0 1 0 14z"/></svg></button>
+</div>
+
+<div class="toast" id="toast" role="status"><span id="toastText"></span><button id="toastUndo">Undo</button></div>
+
+<section class="sheet" id="sheet" data-state="peek" aria-label="Commute list">
+  <button class="grab" id="grab" aria-label="Expand list"></button>
+  <div class="sheet-head">
+    <h1>Drive times from the office</h1>
+    <p id="summary">Loading the map…</p>
+    <div class="seg" role="group" aria-label="Traffic">
+      <button id="mOff" aria-pressed="true"><svg viewBox="0 0 24 24"><path d="M18.92 6.01C18.72 5.42 18.16 5 17.5 5h-11c-.66 0-1.21.42-1.42 1.01L3 12v8c0 .55.45 1 1 1h1c.55 0 1-.45 1-1v-1h12v1c0 .55.45 1 1 1h1c.55 0 1-.45 1-1v-8l-2.08-5.99zM6.5 16a1.5 1.5 0 1 1 0-3 1.5 1.5 0 0 1 0 3zm11 0a1.5 1.5 0 1 1 0-3 1.5 1.5 0 0 1 0 3zM5 11l1.5-4.5h11L19 11H5z"/></svg>Off-peak</button>
+      <button id="mPeak" aria-pressed="false"><svg viewBox="0 0 24 24"><path d="M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20zm0 18a8 8 0 1 1 0-16 8 8 0 0 1 0 16zm.5-13H11v6l5.25 3.15.75-1.23-4.5-2.67z"/></svg>Rush hour</button>
+    </div>
+  </div>
+  <div class="sheet-body" id="body">
+    <ul class="list" id="list"></ul>
+    <div class="addform" id="addform">
+      <div class="field"><label for="fSearch">Find a place</label><input id="fSearch" type="search" placeholder="Neighbourhood, street or address" autocomplete="off"></div>
+      <ul class="results" id="results"></ul>
+      <p id="fHint">Or tap the map to drop a pin.</p>
+      <div id="fDetails" hidden>
+        <div class="field"><label for="fName">Name</label><input id="fName" type="text" placeholder="For example, Fremont" maxlength="40" autocomplete="off"></div>
+        <div class="field"><label for="fVibe">Vibe notes (optional)</label><input id="fVibe" type="text" placeholder="For example, quiet, leafy, good coffee" maxlength="160" autocomplete="off"></div>
+        <div class="fields">
+          <div class="field"><label for="fOff">Off-peak min</label><input id="fOff" type="number" min="1" max="180" inputmode="numeric"></div>
+          <div class="field"><label for="fLo">Rush from</label><input id="fLo" type="number" min="1" max="240" inputmode="numeric"></div>
+          <div class="field"><label for="fHi">Rush to</label><input id="fHi" type="number" min="1" max="240" inputmode="numeric"></div>
+        </div>
+        <p id="fNote"></p>
+      </div>
+      <div class="actions"><button class="btn primary" id="fSave" disabled>Add place</button><button class="btn" id="fCancel">Cancel</button></div>
+    </div>
+    <div class="actions main">
+      <button class="btn" id="addBtn"><svg viewBox="0 0 24 24"><path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6z"/></svg>Add a place</button>
+      <button class="btn" id="restoreBtn" hidden>Restore default places</button>
+    </div>
+    <p class="note">Routes follow real roads (OSRM, no live traffic). Default drive times are typical estimates; added places are estimated from the routed distance. Transit lines are approximate, so check King County Metro and Sound Transit timetables.</p>
+  </div>
+</section>
+
+<script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
+<script>
+(function(){
+"use strict";
+
+const OFFICE=[47.5070,-122.2915];
+const toI5=[[47.5070,-122.2915],[47.5050,-122.2875],[47.5030,-122.2830]];
+const i5N=[[47.5030,-122.2830],[47.5140,-122.2880],[47.5260,-122.2950],[47.5360,-122.3040],[47.5470,-122.3130],[47.5560,-122.3195],[47.5650,-122.3225],[47.5750,-122.3232],[47.5830,-122.3222],[47.5905,-122.3215],[47.5960,-122.3228],[47.6015,-122.3240],[47.6075,-122.3275],[47.6118,-122.3300]];
+const i5Up=[[47.6118,-122.3300],[47.6150,-122.3300],[47.6185,-122.3283],[47.6245,-122.3265],[47.6330,-122.3255],[47.6420,-122.3240],[47.6520,-122.3228],[47.6610,-122.3220],[47.6800,-122.3222],[47.7200,-122.3240],[47.7800,-122.3150]];
+const i5S=[[47.4000,-122.2500],[47.4450,-122.2600],[47.4640,-122.2640],[47.4800,-122.2700],[47.4930,-122.2770],[47.5030,-122.2830]];
+const eMarg=[[47.5070,-122.2915],[47.5095,-122.2960],[47.5180,-122.3080],[47.5300,-122.3190],[47.5400,-122.3260],[47.5500,-122.3310],[47.5600,-122.3350],[47.5660,-122.3375]];
+const sr99S=[[47.5660,-122.3375],[47.5715,-122.3372],[47.5760,-122.3370],[47.5850,-122.3358],[47.5920,-122.3352]];
+const tunnel=[[47.5920,-122.3352],[47.6000,-122.3375],[47.6080,-122.3410],[47.6150,-122.3440],[47.6205,-122.3455]];
+const aurora=[[47.6205,-122.3455],[47.6300,-122.3445],[47.6400,-122.3460],[47.6470,-122.3470],[47.6560,-122.3455],[47.6700,-122.3440],[47.7200,-122.3445],[47.7800,-122.3450]];
+const wsBr=[[47.5715,-122.3372],[47.5718,-122.3430],[47.5712,-122.3550],[47.5700,-122.3650],[47.5680,-122.3720]];
+const toMLK=[[47.5070,-122.2915],[47.5050,-122.2875],[47.5030,-122.2830],[47.5040,-122.2795]];
+const mlk=[[47.5040,-122.2795],[47.5100,-122.2790],[47.5180,-122.2785],[47.5225,-122.2790],[47.5300,-122.2805],[47.5378,-122.2815],[47.5450,-122.2835],[47.5520,-122.2880],[47.5580,-122.2920]];
+const elliott15=[[47.6205,-122.3455],[47.6215,-122.3500],[47.6245,-122.3560],[47.6285,-122.3625],[47.6330,-122.3700],[47.6370,-122.3760],[47.6450,-122.3763],[47.6520,-122.3763],[47.6600,-122.3765],[47.6640,-122.3768]];
+const cat=(...parts)=>{const o=[];parts.forEach(p=>p.forEach(q=>{const l=o[o.length-1];if(!l||l[0]!==q[0]||l[1]!==q[1])o.push(q)}));return o};
+
+const DEFAULTS=[
+ {id:"capitol",vibe:"Most restaurants, bars, cafes and nightlife in the city. Very walkable, with a mix of new mid-rises and older buildings.",name:"Capitol Hill",off:15,pk:[30,45],side:"r",via:"I-5 N, then Pine St",
+  transit:"Link 1 Line from Capitol Hill station south to Rainier Beach (about 25 min), then a short bus or drive.",
+  path:cat(toI5,i5N,[[47.6146,-122.3280],[47.6150,-122.3240],[47.6153,-122.3208],[47.6175,-122.3209],[47.6195,-122.3210]])},
+ {id:"slu",vibe:"Almost entirely new towers. Polished and walkable, but quieter at night and on weekends.",name:"South Lake Union",off:15,pk:[30,40],side:"t",via:"I-5 N, then Mercer St",
+  transit:"South Lake Union Streetcar to Westlake, then the 1 Line south.",
+  path:cat(toI5,i5N,[[47.6150,-122.3300],[47.6185,-122.3283],[47.6240,-122.3268],[47.6246,-122.3300],[47.6248,-122.3350],[47.6245,-122.3385]])},
+ {id:"downtown",vibe:"Dense and central with lots of new towers. Lively, but some blocks feel rough.",name:"Downtown / Belltown",off:15,pk:[30,40],side:"b",via:"E Marginal Way, then SR-99",
+  transit:"Route 124 runs from downtown along E Marginal Way past the office.",
+  path:cat(eMarg,sr99S,[[47.5985,-122.3360],[47.6040,-122.3380],[47.6090,-122.3410],[47.6130,-122.3440]])},
+ {id:"columbia",vibe:"A proper high street of restaurants and cafes on the light rail line, with newer apartments. Mellower than the central areas.",name:"Columbia City",off:10,pk:[15,25],side:"r",via:"Boeing Access Rd, then MLK Jr Way S",
+  transit:"Link 1 Line station on the route. Rainier Beach is two stops south.",
+  path:cat(toMLK,mlk,[[47.5594,-122.2892],[47.5594,-122.2862]])},
+ {id:"westseattle",vibe:"A walkable village feel with new mid-rises, good food and a beach nearby.",name:"West Seattle Junction",off:15,pk:[20,35],side:"b",via:"E Marginal Way, then West Seattle Bridge",
+  transit:"RapidRide C Line to downtown, then connect south.",
+  path:cat(eMarg,[[47.5715,-122.3372]],wsBr,[[47.5650,-122.3760],[47.5625,-122.3820],[47.5612,-122.3868]])},
+ {id:"ballard",vibe:"Breweries, restaurants and lots of new mid-rise apartments. Lively, but further out.",name:"Ballard",off:25,pk:[35,50],side:"r",via:"SR-99 tunnel, then 15th Ave W",
+  transit:"RapidRide D Line to downtown, then connect south.",
+  path:cat(eMarg,sr99S,tunnel,elliott15,[[47.6685,-122.3768],[47.6685,-122.3800],[47.6685,-122.3845]])},
+ {id:"georgetown",vibe:"Artsy, with breweries and a great bar scene, but industrial, with few new apartments and planes overhead.",name:"Georgetown",off:5,pk:[10,10],side:"b",via:"I-5 N, then S Albro Pl",
+  transit:"Route 124 runs through Georgetown to the office.",
+  path:cat(toI5,i5N.slice(0,5),[[47.5478,-122.3165],[47.5480,-122.3205]])}
+];
+
+
+/* ---------- config ---------- */
+const STYLES={streets:"https://tiles.openfreemap.org/styles/liberty",light:"https://tiles.openfreemap.org/styles/positron",dark:"https://tiles.openfreemap.org/styles/dark"};
+const OSRM="https://router.project-osrm.org/route/v1/driving/";
+const PHOTON="https://photon.komoot.io/api/";
+const KEY="boeing-commute-map-v2", RKEY="boeing-commute-routes-v2";
+const prefersDark=matchMedia("(prefers-color-scheme: dark)").matches;
+let S={removed:[],hidden:[],custom:[],mode:"off",style:prefersDark?"dark":"streets",layers:{link:true,sounder:true,streetcar:true,bus:false}};
+try{const v=JSON.parse(localStorage.getItem(KEY)||"null");if(v){S=Object.assign(S,v);S.layers=Object.assign({link:true,sounder:true,streetcar:true,bus:false},v.layers||{})}}catch(e){}
+let RC={};try{RC=JSON.parse(localStorage.getItem(RKEY)||"{}")}catch(e){}
+const save=()=>{try{localStorage.setItem(KEY,JSON.stringify(S))}catch(e){}};
+const saveRC=()=>{try{localStorage.setItem(RKEY,JSON.stringify(RC))}catch(e){}};
+
+/* ---------- helpers ---------- */
+const $=id=>document.getElementById(id);
+const ll2=p=>[p[1],p[0]];               /* [lat,lng] -> [lng,lat] */
+const hav=(a,b)=>{const t=Math.PI/180,dLa=(b[1]-a[1])*t,dLo=(b[0]-a[0])*t;const h=Math.sin(dLa/2)**2+Math.cos(a[1]*t)*Math.cos(b[1]*t)*Math.sin(dLo/2)**2;return 12742*Math.asin(Math.sqrt(h))};
+const plen=p=>{let d=0;for(let i=1;i<p.length;i++)d+=hav(p[i-1],p[i]);return d};
+const esc=s=>String(s).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const pkTxt=p=>p[0]===p[1]?`${p[0]}`:`${p[0]}–${p[1]}`;
+const reduce=matchMedia("(prefers-reduced-motion: reduce)").matches;
+const isDesk=()=>matchMedia("(min-width:880px)").matches;
+const O=ll2(OFFICE);
+const rkey=e=>`${e[0].toFixed(5)},${e[1].toFixed(5)}`;
+const fromMin=min=>{const off=Math.max(3,Math.round(min*1.15));return{off,pk:[Math.round(off*1.6),Math.round(off*2.3)]}};
+
+function viaFrom(steps){
+  const agg=new Map();
+  steps.forEach(s=>{let k=((s.ref||s.name||"").split(";")[0]).trim();if(!k)return;
+    k=k.replace(/^I (\d+)/,"I-$1").replace(/^(WA|SR) (\d+)/,"SR-$2").replace(/^US (\d+)/,"US-$1");
+    const a=agg.get(k)||{d:0,i:agg.size};a.d+=s.distance;agg.set(k,a)});
+  const top=[...agg.entries()].sort((a,b)=>b[1].d-a[1].d).slice(0,2).sort((a,b)=>a[1].i-b[1].i).map(x=>x[0]);
+  return top.length?top.join(", then "):null;
+}
+async function route(end){
+  const k=rkey(end);if(RC[k])return RC[k];
+  const ctl=new AbortController();const tm=setTimeout(()=>ctl.abort(),9000);
+  try{
+    const r=await fetch(`${OSRM}${O[0]},${O[1]};${end[0]},${end[1]}?overview=full&geometries=geojson&steps=true`,{signal:ctl.signal});
+    if(!r.ok)throw new Error(r.status);const j=await r.json();const rt=j.routes&&j.routes[0];if(!rt)throw new Error("no route");
+    const out={coords:rt.geometry.coordinates.map(c=>[+c[0].toFixed(5),+c[1].toFixed(5)]),km:rt.distance/1000,min:rt.duration/60,via:viaFrom(rt.legs[0].steps||[])};
+    RC[k]=out;saveRC();return out;
+  }catch(e){return null}finally{clearTimeout(tm)}
+}
+
+/* ---------- items ---------- */
+function items(){
+  const d=DEFAULTS.filter(x=>!S.removed.includes(x.id)).map(x=>{const end=ll2(x.path[x.path.length-1]);return Object.assign({},x,{end,sketch:x.path.map(ll2)})});
+  const c=S.custom.map(x=>Object.assign({},x,{custom:true,side:"r",end:[x.lng,x.lat],sketch:[O,[x.lng,x.lat]],via:"",transit:"",vibe:x.vibe||""}));
+  return d.concat(c).map(it=>{const r=RC[rkey(it.end)];
+    return Object.assign(it,{geo:r?r.coords:it.sketch,routed:!!r,km:r?r.km:plen(it.sketch)*(it.custom?1.3:1),free:r?r.min:null,via:(r&&r.via)||it.via||"Straight-line estimate"})});
+}
+
+/* ---------- map ---------- */
+const map=new maplibregl.Map({container:"map",style:STYLES[S.style],center:[-122.32,47.58],zoom:11,attributionControl:false,
+  maxBounds:[[-122.95,47.1],[-121.7,48.05]],dragRotate:false,pitchWithRotate:false,touchPitch:false});
+map.touchZoomRotate.disableRotation();
+map.addControl(new maplibregl.AttributionControl({compact:true}),"bottom-left");
+let styleReady=false;
+map.on("error",e=>{if(!styleReady&&S.style!=="streets"){S.style="streets";save();markStyle();map.setStyle(STYLES.streets,{diff:false})}});
+
+function googleTint(){
+  if(S.style!=="streets")return;
+  map.getStyle().layers.forEach(l=>{try{
+    if(l.type==="background")map.setPaintProperty(l.id,"background-color","#f1f3f4");
+    else if(l.type==="fill"&&/^water/.test(l.id))map.setPaintProperty(l.id,"fill-color","#a3ccff");
+    else if(l.type==="fill"&&/park|wood|grass/.test(l.id))map.setPaintProperty(l.id,"fill-color","#c8ebc4");
+    else if(l.type==="line"&&/motorway/.test(l.id)&&!/casing|link/.test(l.id))map.setPaintProperty(l.id,"line-color","#fdd57a");
+    else if(l.type==="line"&&/motorway/.test(l.id)&&/casing/.test(l.id))map.setPaintProperty(l.id,"line-color","#e3ac3a");
+  }catch(e){}});
+}
+
+/* transit geojson */
+const F=(kind,pts)=>({type:"Feature",properties:{kind},geometry:{type:"LineString",coordinates:pts.map(ll2)}});
+const P=(kind,name,p)=>({type:"Feature",properties:{kind,name},geometry:{type:"Point",coordinates:ll2(p)}});
+const stations=[["Tukwila Intl Blvd",[47.4642,-122.2880]],["Rainier Beach",[47.5222,-122.2795]],["Othello",[47.5381,-122.2817]],["Columbia City",[47.5597,-122.2929]],["Mount Baker",[47.5767,-122.2977]],["Beacon Hill",[47.5791,-122.3115]],["SODO",[47.5810,-122.3274]],["Stadium",[47.5915,-122.3272]],["Intl District/Chinatown",[47.5982,-122.3280]],["Pioneer Square",[47.6027,-122.3312]],["Symphony",[47.6079,-122.3363]],["Westlake",[47.6116,-122.3371]],["Capitol Hill",[47.6194,-122.3203]],["Univ of Washington",[47.6493,-122.3038]],["U District",[47.6602,-122.3140]],["Roosevelt",[47.6764,-122.3160]],["Northgate",[47.7059,-122.3278]]];
+const linkPath=[[47.4642,-122.2880],[47.4780,-122.2860],[47.4900,-122.2830],[47.4990,-122.2805],[47.5040,-122.2798],[47.5120,-122.2788],[47.5222,-122.2795],[47.5300,-122.2808],[47.5381,-122.2817],[47.5450,-122.2840],[47.5520,-122.2885],[47.5597,-122.2929],[47.5680,-122.2955],[47.5767,-122.2977],[47.5791,-122.3115],[47.5810,-122.3274],[47.5915,-122.3272],[47.5982,-122.3280],[47.6027,-122.3312],[47.6079,-122.3363],[47.6116,-122.3371],[47.6194,-122.3203],[47.6380,-122.3100],[47.6493,-122.3038],[47.6602,-122.3140],[47.6764,-122.3160],[47.7059,-122.3278]];
+const sounderPath=[[47.5985,-122.3300],[47.5850,-122.3300],[47.5700,-122.3265],[47.5580,-122.3230],[47.5480,-122.3160],[47.5400,-122.3085],[47.5300,-122.3020],[47.5200,-122.2945],[47.5100,-122.2862],[47.4950,-122.2750],[47.4800,-122.2600],[47.4700,-122.2480],[47.4605,-122.2410]];
+const TRANSIT={type:"FeatureCollection",features:[
+  F("link",linkPath),F("sounder",sounderPath),
+  F("streetcar",[[47.6116,-122.3371],[47.6180,-122.3380],[47.6265,-122.3385],[47.6272,-122.3315]]),
+  F("streetcar",[[47.6006,-122.3326],[47.5990,-122.3250],[47.5990,-122.3170],[47.6060,-122.3205],[47.6186,-122.3208]]),
+  F("rapid",cat([[47.6116,-122.3371],[47.6050,-122.3345],[47.6000,-122.3335]],[[47.5920,-122.3352],[47.5850,-122.3358],[47.5760,-122.3370],[47.5715,-122.3372]],wsBr,[[47.5650,-122.3760],[47.5625,-122.3820],[47.5612,-122.3868]])),
+  F("rapid",cat([[47.6060,-122.3340],[47.6116,-122.3400],[47.6180,-122.3470],[47.6205,-122.3455]],elliott15,[[47.6685,-122.3768],[47.6685,-122.3845]])),
+  F("bus",[[47.6060,-122.3340],[47.5985,-122.3295],[47.5800,-122.3290],[47.5600,-122.3265],[47.5480,-122.3230],[47.5400,-122.3260],[47.5300,-122.3190],[47.5180,-122.3080],[47.5095,-122.2960],[47.4950,-122.2940],[47.4642,-122.2885]])
+]};
+const STN={type:"FeatureCollection",features:stations.map(([n,p])=>P("link",n,p)).concat([P("planned","Boeing Access Rd (planned, about 2031)",[47.5040,-122.2798]),P("sounder","King Street",[47.5985,-122.3300]),P("sounder","Tukwila Station",[47.4605,-122.2410])])};
+const TCOL={link:"#1e8a3c",sounder:"#7b57b5",streetcar:"#e8710a",rapid:"#c8102e",bus:"#80868b"};
+const enabledKinds=()=>{const k=[];if(S.layers.link)k.push("link","planned");if(S.layers.sounder)k.push("sounder");if(S.layers.streetcar)k.push("streetcar");if(S.layers.bus)k.push("rapid","bus");return k};
+const W=(a,b,c)=>["interpolate",["linear"],["zoom"],10,a,13,b,16,c];
+
+function addOverlays(){
+  if(map.getSource("routes"))return;
+  const dark=S.style==="dark";const casing=dark?"#1b1f24":"#ffffff";
+  map.addSource("transit",{type:"geojson",data:TRANSIT});
+  map.addSource("stations",{type:"geojson",data:STN});
+  map.addSource("routes",{type:"geojson",data:{type:"FeatureCollection",features:[]}});
+  map.addLayer({id:"t-casing",type:"line",source:"transit",layout:{"line-cap":"round","line-join":"round"},paint:{"line-color":casing,"line-width":W(4,6,9),"line-opacity":.9}});
+  map.addLayer({id:"t-solid",type:"line",source:"transit",filter:["in",["get","kind"],["literal",["link","streetcar","rapid"]]],layout:{"line-cap":"round","line-join":"round"},
+    paint:{"line-color":["match",["get","kind"],"link",TCOL.link,"streetcar",TCOL.streetcar,TCOL.rapid],"line-width":W(2,3.5,6)}});
+  map.addLayer({id:"t-sounder",type:"line",source:"transit",filter:["==",["get","kind"],"sounder"],paint:{"line-color":TCOL.sounder,"line-width":W(2,3,5),"line-dasharray":[3,2]}});
+  map.addLayer({id:"t-bus",type:"line",source:"transit",filter:["==",["get","kind"],"bus"],layout:{"line-cap":"round"},paint:{"line-color":TCOL.bus,"line-width":W(2,2.5,4),"line-dasharray":[0.5,2]}});
+  map.addLayer({id:"stn",type:"circle",source:"stations",paint:{"circle-radius":W(2.5,4,6),"circle-color":"#ffffff",
+    "circle-stroke-color":["match",["get","kind"],"sounder",TCOL.sounder,TCOL.link],"circle-stroke-width":W(1.5,2.5,3)}});
+  const rc=dark?"#669df6":"#1a73e8",re=dark?"#1a3d7a":"#1552a8",rd=dark?"#3d5f99":"#8ab4f8";
+  map.addLayer({id:"r-casing",type:"line",source:"routes",layout:{"line-cap":"round","line-join":"round"},paint:{"line-color":casing,"line-width":W(8,11,16)}});
+  map.addLayer({id:"r-edge",type:"line",source:"routes",filter:["!",["get","sketch"]],layout:{"line-cap":"round","line-join":"round"},paint:{"line-color":["case",["get","dim"],rd,re],"line-width":W(6,8.5,13),"line-opacity":["case",["get","dim"],.5,1]}});
+  map.addLayer({id:"r-core",type:"line",source:"routes",filter:["!",["get","sketch"]],layout:{"line-cap":"round","line-join":"round"},paint:{"line-color":["case",["get","dim"],rd,rc],"line-width":W(4,6,9)}});
+  map.addLayer({id:"r-sketch",type:"line",source:"routes",filter:["get","sketch"],layout:{"line-cap":"round","line-join":"round"},paint:{"line-color":["case",["get","dim"],rd,rc],"line-width":W(4,5,7),"line-dasharray":[0.2,2]}});
+  applyLayers();drawRoutes();
+}
+map.on("style.load",()=>{styleReady=true;googleTint();addOverlays();map.getContainer().classList.toggle("dark-map",S.style==="dark");markStyle()});
+
+/* ---------- html markers ---------- */
+const mk=(html,cls,ll,onClick)=>{const el=document.createElement("div");el.className="mk "+(cls||"");el.innerHTML=html;
+  if(onClick)el.addEventListener("click",e=>{e.stopPropagation();markerTap=Date.now();onClick()});
+  return new maplibregl.Marker({element:el,anchor:"center"}).setLngLat(ll).addTo(map)};
+let markerTap=0;
+mk(`<div class="ep"><svg class="pin" viewBox="0 0 30 40"><path fill="#ea4335" stroke="#b31412" stroke-width="1.2" d="M15 1C7.3 1 1.5 6.8 1.5 14.2 1.5 24.5 15 39 15 39s13.5-14.5 13.5-24.8C28.5 6.8 22.7 1 15 1z"/><circle cx="15" cy="14" r="5" fill="#b31412"/></svg><span class="pin-lbl">Office</span></div>`,"",O,()=>{select(null);fitAll()}).getElement().style.zIndex=5;
+const stnLabels=STN.features.map(f=>({kind:f.properties.kind,m:mk(`<span>${esc(f.properties.name)}</span>`,"lbl stn-lbl",f.geometry.coordinates)}));
+
+let epMarkers=[];
+const carSvg='<svg viewBox="0 0 24 24"><path d="M18.92 6.01C18.72 5.42 18.16 5 17.5 5h-11c-.66 0-1.21.42-1.42 1.01L3 12v8c0 .55.45 1 1 1h1c.55 0 1-.45 1-1v-1h12v1c0 .55.45 1 1 1h1c.55 0 1-.45 1-1v-8l-2.08-5.99zM6.5 16a1.5 1.5 0 1 1 0-3 1.5 1.5 0 0 1 0 3zm11 0a1.5 1.5 0 1 1 0-3 1.5 1.5 0 0 1 0 3zM5 11l1.5-4.5h11L19 11H5z"/></svg>';
+const timeFor=it=>S.mode==="off"?`${it.off} min`:`${pkTxt(it.pk)} min`;
+let selected=null,addMode=false,tmp=null,tmpRoute=null,lastRemoved=null,toastTimer=null,routing=0,failed=0;
+
+function drawRoutes(){
+  const list=items().filter(i=>!S.hidden.includes(i.id));
+  const src=map.getSource&&map.getSource("routes");
+  if(src){const feats=list.slice().sort((a,b)=>(a.id===selected)-(b.id===selected)).map(it=>({type:"Feature",
+      properties:{id:it.id,dim:!!(selected&&selected!==it.id),sketch:!it.routed},geometry:{type:"LineString",coordinates:it.geo}}));
+    if(tmpRoute)feats.push({type:"Feature",properties:{id:"_tmp",dim:false,sketch:!tmpRoute.coords},geometry:{type:"LineString",coordinates:tmpRoute.coords||tmpRoute.sketch}});
+    src.setData({type:"FeatureCollection",features:feats});}
+  epMarkers.forEach(m=>m.remove());epMarkers=[];
+  list.forEach(it=>{const m=mk(`<div class="ep ${it.side||"r"}${it.custom?" custom":""}${selected===it.id?" sel":""}"><span class="dot"></span><span class="pill"><b>${esc(it.name)}</b><span class="t">${carSvg}${timeFor(it)}</span></span></div>`,"",it.end,()=>{if(addMode)placeTemp(it.end);else select(it.id,true)});
+    m.getElement().style.zIndex=selected===it.id?4:2;epMarkers.push(m)});
+}
+
+/* ---------- list ---------- */
+const eye='<svg viewBox="0 0 24 24"><path d="M12 4.5C7 4.5 2.73 7.61 1 12c1.73 4.39 6 7.5 11 7.5s9.27-3.11 11-7.5c-1.73-4.39-6-7.5-11-7.5zM12 17a5 5 0 1 1 0-10 5 5 0 0 1 0 10zm0-8a3 3 0 1 0 0 6 3 3 0 0 0 0-6z"/></svg>';
+const eyeOff='<svg viewBox="0 0 24 24"><path d="M12 7a5 5 0 0 1 5 5c0 .65-.13 1.26-.36 1.83l2.92 2.92A11.8 11.8 0 0 0 23 12c-1.73-4.39-6-7.5-11-7.5-1.4 0-2.74.25-3.98.7l2.16 2.16C10.74 7.13 11.35 7 12 7zM2 4.27l2.28 2.28.46.46A11.8 11.8 0 0 0 1 12c1.73 4.39 6 7.5 11 7.5 1.55 0 3.03-.3 4.38-.84l.42.42L19.73 22 21 20.73 3.27 3 2 4.27zM7.53 9.8l1.55 1.55A2.8 2.8 0 0 0 9 12a3 3 0 0 0 3 3c.22 0 .44-.03.65-.08l1.55 1.55A5 5 0 0 1 7.53 9.8zm4.31-.78 3.15 3.15.02-.16a3 3 0 0 0-3-3l-.17.01z"/></svg>';
+const trash='<svg viewBox="0 0 24 24"><path d="M6 19a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"/></svg>';
+const home='<svg viewBox="0 0 24 24"><path d="M10 20v-6h4v6h5v-8h3L12 3 2 12h3v8z"/></svg>';
+const train='<svg viewBox="0 0 24 24"><path d="M12 2c-4 0-8 .5-8 4v9.5A3.5 3.5 0 0 0 7.5 19L6 20.5v.5h2l2-2h4l2 2h2v-.5L16.5 19a3.5 3.5 0 0 0 3.5-3.5V6c0-3.5-3.58-4-8-4zM7.5 17a1.5 1.5 0 1 1 0-3 1.5 1.5 0 0 1 0 3zm3.5-7H6V6h5v4zm2 0V6h5v4h-5zm3.5 7a1.5 1.5 0 1 1 0-3 1.5 1.5 0 0 1 0 3z"/></svg>';
+
+function renderList(){
+  const list=items();const ul=$("list");
+  ul.innerHTML=!list.length?`<li class="empty">No places yet. Add one to see its route.</li>`:list.map(it=>{
+    const hid=S.hidden.includes(it.id);
+    const main=S.mode==="off"?`${it.off}`:pkTxt(it.pk);const other=S.mode==="off"?`${pkTxt(it.pk)} rush hour`:`${it.off} off-peak`;
+    return `<li class="row${hid?" hidden":""}${selected===it.id?" sel":""}" data-id="${esc(it.id)}"><div class="row-top">
+      <button class="row-main" data-act="sel"><span class="row-icon">${home}</span>
+      <span class="row-text"><span class="row-name">${esc(it.name)}</span><span class="row-sub">${esc(it.via)}</span></span>
+      <span class="row-time"><b>${main} min</b><small>${other}</small></span></button>
+      <button class="icon-btn" data-act="vis" aria-pressed="${!hid}" aria-label="${hid?"Show":"Hide"} ${esc(it.name)} route">${hid?eyeOff:eye}</button>
+      <button class="icon-btn" data-act="del" aria-label="Remove ${esc(it.name)}">${trash}</button></div>
+      <div class="row-detail">${it.vibe?`<p class="vibe">${esc(it.vibe)}</p>`:""}<dl><dt>Off-peak</dt><dd>${it.off} min</dd><dt>Rush hour</dt><dd>${pkTxt(it.pk)} min</dd>
+      <dt>Distance</dt><dd>${it.routed?"":"about "}${it.km.toFixed(1)} km (${(it.km*0.621).toFixed(1)} mi)</dd>
+      ${it.free?`<dt>No traffic</dt><dd>${Math.round(it.free)} min</dd>`:""}</dl>
+      ${it.transit?`<div class="transit">${train}<span>${esc(it.transit)}</span></div>`:""}
+      <div class="src">${it.routed?"Route follows real roads.":"Routing service unreachable, so this is a sketched route."}</div></div></li>`}).join("");
+  $("restoreBtn").hidden=!S.removed.length;
+  const vis=list.filter(i=>!S.hidden.includes(i.id)).length;
+  $("summary").textContent=routing?`Routing along real roads…`:failed?`${vis} of ${list.length} shown. Some routes are sketched because the routing service didn't respond.`:`${vis} of ${list.length} places shown. Tap a place or route for details.`;
+}
+function render(){drawRoutes();renderList();document.body.classList.toggle("peak",S.mode==="peak")}
+
+async function routeAll(){
+  const list=items().filter(i=>!RC[rkey(i.end)]);if(!list.length){render();return}
+  routing=list.length;failed=0;renderList();
+  for(const it of list){const r=await route(it.end);if(!r)failed++;routing--;render()}
+  fitAll();
+}
+
+$("list").addEventListener("click",e=>{const b=e.target.closest("button");if(!b)return;const id=b.closest(".row").dataset.id;const act=b.dataset.act;
+  if(act==="sel")select(selected===id?null:id,true);
+  else if(act==="vis"){S.hidden=S.hidden.includes(id)?S.hidden.filter(x=>x!==id):S.hidden.concat(id);save();render()}
+  else if(act==="del")removeItem(id)});
+function removeItem(id){const it=items().find(x=>x.id===id);if(!it)return;
+  if(it.custom){lastRemoved={custom:S.custom.find(x=>x.id===id)};S.custom=S.custom.filter(x=>x.id!==id)}else{S.removed=S.removed.concat(id);lastRemoved={id}}
+  if(selected===id)selected=firstVisible();save();render();showToast(`Removed ${it.name}`)}
+function showToast(t){$("toastText").textContent=t;$("toast").classList.add("show");clearTimeout(toastTimer);toastTimer=setTimeout(()=>$("toast").classList.remove("show"),5000)}
+$("toastUndo").onclick=()=>{if(!lastRemoved)return;if(lastRemoved.custom)S.custom.push(lastRemoved.custom);else S.removed=S.removed.filter(x=>x!==lastRemoved.id);lastRemoved=null;save();render();$("toast").classList.remove("show")};
+$("restoreBtn").onclick=()=>{S.removed=[];if(!selected)selected=firstVisible();save();routeAll();render();fitAll()};
+
+/* ---------- selection + fitting ---------- */
+function pad(){
+  if(isDesk())return{top:80,left:420,right:80,bottom:40};
+  const sh=$("sheet"),open=sh.dataset.state==="open";
+  const bottom=open?sh.getBoundingClientRect().height:parseInt(getComputedStyle(document.documentElement).getPropertyValue("--peek"));
+  return{top:90,left:open?60:70,right:open?110:120,bottom:bottom+(open?30:36)};
+}
+function bounds(coords){const b=new maplibregl.LngLatBounds(O,O);coords.forEach(c=>b.extend(c));return b}
+function fitAll(){const c=[];items().filter(i=>!S.hidden.includes(i.id)).forEach(i=>c.push(...i.geo));
+  try{map.fitBounds(bounds(c),{padding:pad(),maxZoom:13.5,duration:reduce?0:600})}catch(e){}}
+function select(id,fly){
+  selected=id;render();
+  if(id){const it=items().find(x=>x.id===id);if(!isDesk())setSheet("open");
+    if(fly&&it)try{map.fitBounds(bounds(it.geo),{padding:pad(),maxZoom:14,duration:reduce?0:700})}catch(e){}
+    requestAnimationFrame(()=>{const row=document.querySelector(`.row[data-id="${CSS.escape(id)}"]`);if(row)row.scrollIntoView({block:"nearest",behavior:reduce?"auto":"smooth"})})}
+}
+map.on("click",e=>{
+  if(Date.now()-markerTap<80)return;
+  if(addMode){placeTemp([e.lngLat.lng,e.lngLat.lat]);return}
+  const p=e.point,box=[[p.x-8,p.y-8],[p.x+8,p.y+8]];
+  const lyr=["r-core","r-sketch"].filter(l=>map.getLayer(l));
+  const f=lyr.length?map.queryRenderedFeatures(box,{layers:lyr}).filter(x=>x.properties.id!=="_tmp"):[];
+  if(f.length){select(f[0].properties.id,true);return}
+  if(selected)select(null);closeLayers();
+});
+map.on("mousemove",e=>{const lyr=["r-core","r-sketch"].filter(l=>map.getLayer(l));if(!lyr.length)return;
+  map.getCanvas().style.cursor=addMode?"crosshair":(map.queryRenderedFeatures(e.point,{layers:lyr}).length?"pointer":"")});
+
+/* ---------- sheet ---------- */
+function setSheet(st){$("sheet").dataset.state=st;$("grab").setAttribute("aria-label",st==="open"?"Collapse list":"Expand list");
+  const h=(st==="open"&&!isDesk())?Math.round($("sheet").getBoundingClientRect().height):null;
+  document.querySelector(".ctrls").style.bottom=h?`${h+14}px`:"";
+  const a=document.querySelector(".maplibregl-ctrl-bottom-left");if(a)a.style.bottom=h?`${h}px`:"";}
+$("grab").onclick=()=>setSheet($("sheet").dataset.state==="open"?"peek":"open");
+(function(){let y0=null;[$("grab"),document.querySelector(".sheet-head")].forEach(el=>el.addEventListener("pointerdown",e=>{if(e.target.closest(".seg"))return;y0=e.clientY}));
+  window.addEventListener("pointerup",e=>{if(y0===null)return;const dy=e.clientY-y0;y0=null;if(dy<-30)setSheet("open");else if(dy>30)setSheet("peek")})})();
+document.querySelector(".sheet-head h1").addEventListener("click",()=>{if(!isDesk())setSheet($("sheet").dataset.state==="open"?"peek":"open")});
+
+/* ---------- mode, layers, style ---------- */
+function setMode(m){S.mode=m;save();$("mOff").setAttribute("aria-pressed",m==="off");$("mPeak").setAttribute("aria-pressed",m==="peak");render()}
+$("mOff").onclick=()=>setMode("off");$("mPeak").onclick=()=>setMode("peak");
+function applyLayers(){
+  const k=enabledKinds();
+  if(map.getLayer("t-casing")){
+    map.setFilter("t-casing",["in",["get","kind"],["literal",k]]);
+    map.setFilter("t-solid",["in",["get","kind"],["literal",k.filter(x=>["link","streetcar","rapid"].includes(x))]]);
+    map.setLayoutProperty("t-sounder","visibility",S.layers.sounder?"visible":"none");
+    map.setLayoutProperty("t-bus","visibility",S.layers.bus?"visible":"none");
+    map.setFilter("stn",["in",["get","kind"],["literal",k]]);
+  }
+  stnLabels.forEach(s=>s.m.getElement().style.display=k.includes(s.kind)?"":"none");
+  document.querySelectorAll("[data-layer]").forEach(i=>i.checked=!!S.layers[i.dataset.layer]);
+}
+document.querySelectorAll("[data-layer]").forEach(i=>i.addEventListener("change",()=>{S.layers[i.dataset.layer]=i.checked;save();applyLayers()}));
+function markStyle(){document.querySelectorAll("[data-style]").forEach(b=>b.setAttribute("aria-pressed",b.dataset.style===S.style))}
+document.querySelectorAll("[data-style]").forEach(b=>b.onclick=()=>{if(S.style===b.dataset.style)return;S.style=b.dataset.style;save();styleReady=false;markStyle();map.setStyle(STYLES[S.style],{diff:false})});
+function closeLayers(){$("layers").classList.remove("open");$("layersBtn").setAttribute("aria-expanded","false")}
+$("layersBtn").onclick=e=>{e.stopPropagation();const o=!$("layers").classList.contains("open");$("layers").classList.toggle("open",o);$("layersBtn").setAttribute("aria-expanded",String(o))};
+document.addEventListener("keydown",e=>{if(e.key==="Escape"){closeLayers();if(addMode)cancelAdd()}});
+
+/* ---------- add a place ---------- */
+function startAdd(){addMode=true;selected=null;render();$("sheet").classList.add("adding");$("fDetails").hidden=true;$("fSave").disabled=true;
+  $("fSearch").value="";$("results").innerHTML="";$("banner").classList.add("show");setSheet(isDesk()?"open":"peek");closeLayers()}
+async function placeTemp(end,name){
+  if(tmp)tmp.remove();
+  tmp=mk(`<div class="ep r custom sel"><span class="dot"></span><span class="pill"><b>${esc(name||"New place")}</b></span></div>`,"",end);
+  tmp.getElement().style.zIndex=6;
+  $("banner").classList.remove("show");$("fDetails").hidden=false;$("fSave").disabled=false;$("fName").value=name||"";$("fVibe").value="";setSheet("open");
+  const straight=hav(O,end);const guess=fromMin(straight*1.3/36*60);
+  $("fOff").value=guess.off;$("fLo").value=guess.pk[0];$("fHi").value=guess.pk[1];$("fNote").textContent="Finding a road route…";
+  tmpRoute={sketch:[O,end],coords:null};drawRoutes();
+  const token=tmp;const r=await route(end);if(token!==tmp)return;
+  if(r){const t=fromMin(r.min);$("fOff").value=t.off;$("fLo").value=t.pk[0];$("fHi").value=t.pk[1];tmpRoute.coords=r.coords;
+    $("fNote").textContent=`${r.km.toFixed(1)} km by road${r.via?` via ${r.via}`:""}, about ${Math.round(r.min)} min with no traffic. Times are estimates; change them if you know better.`;}
+  else $("fNote").textContent="The routing service didn't respond, so times are estimated from straight-line distance.";
+  drawRoutes();
+  try{map.fitBounds(bounds((r&&r.coords)||[end]),{padding:pad(),maxZoom:14,duration:reduce?0:600})}catch(e){}
+  if(!name)setTimeout(()=>$("fName").focus(),250);
+}
+function cancelAdd(){addMode=false;if(tmp){tmp.remove();tmp=null}tmpRoute=null;$("banner").classList.remove("show");$("sheet").classList.remove("adding");drawRoutes()}
+$("addBtn").onclick=startAdd;$("bannerCancel").onclick=cancelAdd;$("fCancel").onclick=cancelAdd;
+$("fSave").onclick=()=>{if(!tmp)return;const name=$("fName").value.trim();
+  if(!name){$("fName").focus();$("fName").placeholder="Give this place a name";return}
+  const ll=tmp.getLngLat();const n=v=>Math.max(1,Math.round(+v||0));let lo=n($("fLo").value),hi=n($("fHi").value);if(hi<lo)[lo,hi]=[hi,lo];
+  const id="c"+Date.now();S.custom.push({id,name,vibe:$("fVibe").value.trim(),lat:+ll.lat.toFixed(5),lng:+ll.lng.toFixed(5),off:n($("fOff").value),pk:[lo,hi]});save();
+  cancelAdd();select(id,true)};
+$("fName").addEventListener("keydown",e=>{if(e.key==="Enter")$("fSave").click()});
+let sTimer=null,sCtl=null;
+$("fSearch").addEventListener("input",()=>{clearTimeout(sTimer);const q=$("fSearch").value.trim();if(q.length<3){$("results").innerHTML="";return}
+  sTimer=setTimeout(async()=>{if(sCtl)sCtl.abort();sCtl=new AbortController();
+    try{const r=await fetch(`${PHOTON}?q=${encodeURIComponent(q)}&lat=47.58&lon=-122.32&limit=5&bbox=-122.55,47.3,-121.95,47.85`,{signal:sCtl.signal});const j=await r.json();
+      const fs=(j.features||[]);$("results").innerHTML=fs.length?fs.map((f,i)=>{const p=f.properties;const sub=[p.street,p.district||p.locality,p.city].filter(Boolean).join(", ");
+        return `<li><button data-i="${i}">${esc(p.name||p.street||"Unnamed place")}<small>${esc(sub)}</small></button></li>`}).join(""):`<li class="msg">No matches in the Seattle area. Try another name, or tap the map.</li>`;
+      $("results").onclick=e=>{const b=e.target.closest("button");if(!b)return;const f=fs[+b.dataset.i];$("results").innerHTML="";$("fSearch").value="";
+        placeTemp(f.geometry.coordinates,f.properties.name||f.properties.street||"")};
+    }catch(e){if(e.name!=="AbortError")$("results").innerHTML=`<li class="msg">Search is unavailable right now. Tap the map instead.</li>`}},300)});
+
+/* ---------- controls ---------- */
+$("zin").onclick=()=>map.zoomIn();$("zout").onclick=()=>map.zoomOut();
+$("fitBtn").onclick=()=>{select(null);fitAll()};$("officeBtn").onclick=()=>{select(null);fitAll()};
+function zoomClass(){const z=map.getZoom(),c=map.getContainer();c.classList.toggle("zA",z<12);c.classList.toggle("zB",z>=12&&z<13.5);c.classList.toggle("zC",z>=13.5)}
+map.on("zoom",zoomClass);
+window.addEventListener("resize",()=>{if(isDesk())setSheet($("sheet").dataset.state)});
+
+/* ---------- init ---------- */
+function firstVisible(){const f=items().find(i=>!S.hidden.includes(i.id));return f?f.id:null}
+selected=firstVisible();
+setMode(S.mode);markStyle();applyLayers();zoomClass();
+map.once("load",()=>{fitAll();routeAll()});
+})();
+
+</script>
+</body>
+</html>
